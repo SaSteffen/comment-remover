@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "comment-remover"
+version = "0.1.0"
+description = "Remove comments added in the latest git commit"
+authors = ["Sascha Steffen"]
+readme = "README.md"
+packages = [{include = "comment_remover"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+GitPython = "^3.1.0"
+unidiff = "^0.7.0"
+
+[tool.poetry.scripts]
+remove-comments = "comment_remover.cli:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=7.0,<8.0)"
+]
