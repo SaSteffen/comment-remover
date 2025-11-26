@@ -416,3 +416,158 @@ class TestEndToEnd:
 
         finally:
             os.chdir(original_cwd)
+
+    def test_preserve_comments_from_older_commits(self, test_repo):
+        """Test that comments from older commits are preserved, only HEAD comments are removed."""
+        repo_path, repo = test_repo
+
+        test_file = repo_path / "example.py"
+        test_file.write_text(
+            "def foo():\n"
+            "    # Old comment from first commit\n"
+            "    x = 1\n"
+            "    return x\n"
+        )
+
+        repo.index.add(["example.py"])
+        repo.index.commit("Initial commit with comments")
+
+        test_file.write_text(
+            "def foo():\n"
+            "    # Old comment from first commit\n"
+            "    x = 1\n"
+            "    # New comment added in HEAD\n"
+            "    y = 2  # Inline comment added in HEAD\n"
+            "    return x + y\n"
+        )
+
+        repo.index.add(["example.py"])
+        repo.index.commit("Add new code and comments")
+
+        original_cwd = Path.cwd()
+        try:
+            import os
+            os.chdir(repo_path)
+
+            validated_repo = ensure_at_repo_root()
+            diff_text = get_head_diff(validated_repo)
+
+            detector = CommentDetector(diff_text)
+            comments_by_file = detector.detect_comments()
+
+            assert "example.py" in comments_by_file
+            assert len(comments_by_file["example.py"]) == 2
+
+            modifier = FileModifier(repo_path)
+            modifier.remove_comments(comments_by_file)
+
+            result = test_file.read_text()
+            expected = (
+                "def foo():\n"
+                "    # Old comment from first commit\n"
+                "    x = 1\n"
+                "    y = 2\n"
+                "    return x + y\n"
+            )
+
+            assert result == expected, (
+                f"Old comments should be preserved, only HEAD comments removed.\n"
+                f"Expected:\n{expected}\n"
+                f"Got:\n{result}"
+            )
+
+        finally:
+            os.chdir(original_cwd)
+
+    def test_preserve_old_comments_multiple_commits(self, test_repo):
+        """Test preservation of comments across multiple commits."""
+        repo_path, repo = test_repo
+
+        test_file = repo_path / "test.js"
+
+        test_file.write_text(
+            "function add(a, b) {\n"
+            "    // Comment from commit 1\n"
+            "    return a + b;\n"
+            "}\n"
+        )
+        repo.index.add(["test.js"])
+        repo.index.commit("Commit 1: Initial with comment")
+
+        test_file.write_text(
+            "function add(a, b) {\n"
+            "    // Comment from commit 1\n"
+            "    return a + b;\n"
+            "}\n"
+            "\n"
+            "function subtract(a, b) {\n"
+            "    /* Comment from commit 2 */\n"
+            "    return a - b;\n"
+            "}\n"
+        )
+        repo.index.add(["test.js"])
+        repo.index.commit("Commit 2: Add subtract with comment")
+
+        test_file.write_text(
+            "function add(a, b) {\n"
+            "    // Comment from commit 1\n"
+            "    return a + b;\n"
+            "}\n"
+            "\n"
+            "function subtract(a, b) {\n"
+            "    /* Comment from commit 2 */\n"
+            "    return a - b;\n"
+            "}\n"
+            "\n"
+            "function multiply(a, b) {\n"
+            "    // Comment from commit 3 (HEAD)\n"
+            "    return a * b;  // Inline from commit 3\n"
+            "}\n"
+        )
+        repo.index.add(["test.js"])
+        repo.index.commit("Commit 3 (HEAD): Add multiply with comments")
+
+        original_cwd = Path.cwd()
+        try:
+            import os
+            os.chdir(repo_path)
+
+            validated_repo = ensure_at_repo_root()
+            diff_text = get_head_diff(validated_repo)
+
+            detector = CommentDetector(diff_text)
+            comments_by_file = detector.detect_comments()
+
+            assert "test.js" in comments_by_file
+
+            head_comments_count = len(comments_by_file["test.js"])
+            assert head_comments_count == 2, f"Should detect 2 comments from HEAD, got {head_comments_count}"
+
+            modifier = FileModifier(repo_path)
+            modifier.remove_comments(comments_by_file)
+
+            result = test_file.read_text()
+            expected = (
+                "function add(a, b) {\n"
+                "    // Comment from commit 1\n"
+                "    return a + b;\n"
+                "}\n"
+                "\n"
+                "function subtract(a, b) {\n"
+                "    /* Comment from commit 2 */\n"
+                "    return a - b;\n"
+                "}\n"
+                "\n"
+                "function multiply(a, b) {\n"
+                "    return a * b;\n"
+                "}\n"
+            )
+
+            assert result == expected, (
+                f"Comments from commits 1 and 2 should be preserved.\n"
+                f"Expected:\n{expected}\n"
+                f"Got:\n{result}"
+            )
+
+        finally:
+            os.chdir(original_cwd)
