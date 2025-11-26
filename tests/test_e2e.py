@@ -270,3 +270,149 @@ class TestEndToEnd:
 
         finally:
             os.chdir(original_cwd)
+
+    def test_dirty_repo_with_untracked_files(self, test_repo):
+        """Test that script aborts when repository has untracked files."""
+        repo_path, repo = test_repo
+
+        test_file = repo_path / "test.py"
+        test_file.write_text("def foo():\n    pass\n")
+
+        repo.index.add(["test.py"])
+        repo.index.commit("Initial commit")
+
+        untracked_file = repo_path / "untracked.py"
+        untracked_file.write_text("# Untracked file\n")
+
+        original_cwd = Path.cwd()
+        try:
+            import os
+            os.chdir(repo_path)
+
+            from comment_remover.git_ops import GitValidationError
+
+            with pytest.raises(GitValidationError) as exc_info:
+                ensure_at_repo_root()
+
+            error_message = str(exc_info.value)
+            assert "Working directory is not clean" in error_message
+            assert "Untracked files" in error_message
+            assert "untracked.py" in error_message
+
+        finally:
+            os.chdir(original_cwd)
+
+    def test_dirty_repo_with_modified_files(self, test_repo):
+        """Test that script aborts when repository has modified but unstaged files."""
+        repo_path, repo = test_repo
+
+        test_file = repo_path / "test.py"
+        test_file.write_text("def foo():\n    pass\n")
+
+        repo.index.add(["test.py"])
+        repo.index.commit("Initial commit")
+
+        test_file.write_text("def foo():\n    # Modified\n    pass\n")
+
+        original_cwd = Path.cwd()
+        try:
+            import os
+            os.chdir(repo_path)
+
+            from comment_remover.git_ops import GitValidationError
+
+            with pytest.raises(GitValidationError) as exc_info:
+                ensure_at_repo_root()
+
+            error_message = str(exc_info.value)
+            assert "Working directory is not clean" in error_message
+            assert "Modified files" in error_message
+            assert "test.py" in error_message
+
+        finally:
+            os.chdir(original_cwd)
+
+    def test_dirty_repo_with_staged_files(self, test_repo):
+        """Test that script aborts when repository has staged files."""
+        repo_path, repo = test_repo
+
+        test_file = repo_path / "test.py"
+        test_file.write_text("def foo():\n    pass\n")
+
+        repo.index.add(["test.py"])
+        repo.index.commit("Initial commit")
+
+        test_file.write_text("def foo():\n    # Modified\n    pass\n")
+        repo.index.add(["test.py"])
+
+        original_cwd = Path.cwd()
+        try:
+            import os
+            os.chdir(repo_path)
+
+            from comment_remover.git_ops import GitValidationError
+
+            with pytest.raises(GitValidationError) as exc_info:
+                ensure_at_repo_root()
+
+            error_message = str(exc_info.value)
+            assert "Working directory is not clean" in error_message
+            assert "Staged files" in error_message
+            assert "test.py" in error_message
+
+        finally:
+            os.chdir(original_cwd)
+
+    def test_not_at_repo_root(self, test_repo):
+        """Test that script aborts with clear error when not at repository root."""
+        repo_path, repo = test_repo
+
+        test_file = repo_path / "test.py"
+        test_file.write_text("def foo():\n    pass\n")
+
+        repo.index.add(["test.py"])
+        repo.index.commit("Initial commit")
+
+        subdir = repo_path / "subdir"
+        subdir.mkdir()
+
+        original_cwd = Path.cwd()
+        try:
+            import os
+            os.chdir(subdir)
+
+            from comment_remover.git_ops import GitValidationError
+
+            with pytest.raises(GitValidationError) as exc_info:
+                ensure_at_repo_root()
+
+            error_message = str(exc_info.value)
+            assert "Must be run from repository root" in error_message
+            assert "Current directory" in error_message
+            assert "Repository root" in error_message
+            assert str(subdir) in error_message
+            assert str(repo_path) in error_message
+
+        finally:
+            os.chdir(original_cwd)
+
+    def test_not_in_git_repo(self, tmp_path):
+        """Test that script aborts when not in a git repository."""
+        non_repo_dir = tmp_path / "not_a_repo"
+        non_repo_dir.mkdir()
+
+        original_cwd = Path.cwd()
+        try:
+            import os
+            os.chdir(non_repo_dir)
+
+            from comment_remover.git_ops import GitValidationError
+
+            with pytest.raises(GitValidationError) as exc_info:
+                ensure_at_repo_root()
+
+            error_message = str(exc_info.value)
+            assert "Not in a git repository" in error_message
+
+        finally:
+            os.chdir(original_cwd)
