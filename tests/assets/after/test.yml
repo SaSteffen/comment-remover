@@ -1,0 +1,5 @@
+name: test
+# YAML comment
+version: 1.0  # Inline
+dependencies:
+  - pytest
